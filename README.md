@@ -11,12 +11,12 @@ It is structured as a robust **monorepo** consisting of:
 
 ## 🚀 Key Capabilities & core  Innovations
 
-*   **Hands-Free Voice Confirmation & Loop**: Technicians speak inspection logs, hear a synthesized readback of parsed data, and can state natural language modifications (e.g., *"change severity to critical"*) or verify verbally (*"confirm"* / *"cancel"*), entirely screen-free.
-*   **API Key Rotation & Failover**: Active-passive failover between primary (`GROQ_API_KEY`) and secondary (`GROQ_API_KEY_2`) keys on backend text-to-speech requests to prevent rate limit (TPD) exhaustion.
-*   **Static Template TTS Caching**: MD5 hashing and local caching of static vocal messages (e.g., "inspection started") to significantly reduce external API dependencies.
-*   **RAG Document Search**: Similarity indexing of manual PDFs using localized FAISS-Node and pgvector, yielding conversational, spoken-optimized answers inside a 3-second SLA.
-*   **Idempotent Offline Sync Daemon**: Device-local transaction queuing in SQLite (mobile) or IndexedDB (web) using unique UUID payloads to prevent duplicate work orders on the backend upon network reconnection.
-*   **Supervisor Audit Portal**: Real-time Socket.io streams highlighting data-entry warnings and low-confidence transcribing exceptions for supervisor correction.
+* **Hands-Free Voice Confirmation & Loop**: Technicians speak inspection logs, hear a synthesized readback of parsed data, and can state natural language modifications (e.g., *"change severity to critical"*) or verify verbally (*"confirm"* / *"cancel"*), entirely screen-free.
+* **API Key Rotation & Failover**: Active-passive failover between primary (`GROQ_API_KEY`) and secondary (`GROQ_API_KEY_2`) keys on backend text-to-speech requests to prevent rate limit (TPD) exhaustion.
+* **Static Template TTS Caching**: MD5 hashing and local caching of static vocal messages (e.g., "inspection started") to significantly reduce external API dependencies.
+* **RAG Document Search**: Similarity indexing of manual PDFs using localized FAISS-Node and pgvector, yielding conversational, spoken-optimized answers inside a 3-second SLA.
+* **Idempotent Offline Sync Daemon**: Device-local transaction queuing in SQLite (mobile) or IndexedDB (web) using unique UUID payloads to prevent duplicate work orders on the backend upon network reconnection.
+* **Supervisor Audit Portal**: Real-time Socket.io streams highlighting data-entry warnings and low-confidence transcribing exceptions for supervisor correction.
 
 ---
 
@@ -25,13 +25,13 @@ It is structured as a robust **monorepo** consisting of:
 ### 🔄 Logical Architecture Flowchart
 
 ```mermaid
-graph TD
-    %% Custom Theme Styling
-    classDef clientStyle fill:#edf2f7,stroke:#4a5568,stroke-width:1.5px,color:#2d3748;
-    classDef serverStyle fill:#f7fafc,stroke:#4a5568,stroke-width:1.5px,color:#2d3748;
-    classDef aiStyle fill:#ebf8ff,stroke:#3182ce,stroke-width:1.5px,color:#2b6cb0;
-    classDef dbStyle fill:#feebc8,stroke:#dd6b20,stroke-width:1.5px,color:#9c4221;
-    classDef extStyle fill:#faf5ff,stroke:#805ad5,stroke-width:1.5px,color:#553c9a;
+graph TB
+    %% Custom Professional Theme Styling
+    classDef clientStyle fill:#F0F4F8,stroke:#102A43,stroke-width:2px,color:#102A43;
+    classDef serverStyle fill:#F7F9FB,stroke:#334E68,stroke-width:2px,color:#334E68;
+    classDef aiStyle fill:#EBF8FF,stroke:#1B4D7E,stroke-width:2px,color:#1B4D7E;
+    classDef dbStyle fill:#FFFBEA,stroke:#7B4216,stroke-width:2px,color:#7B4216;
+    classDef extStyle fill:#F5F3FF,stroke:#4C1D95,stroke-width:2px,color:#4C1D95;
 
     %% Client Tier Subgraph
     subgraph client_tier ["📱 Client Tier (Flutter Mobile & React Web)"]
@@ -42,46 +42,60 @@ graph TD
         NetworkCheck -->|Offline| OfflineDB[(💾 Local SQLite / IndexedDB)]
         NetworkCheck -->|Online| APIClient[📡 API HTTP Client]
         
-        OfflineDB -->|Auto-Sync Queue| APIClient
+        OfflineDB -->|Auto-Sync Batch Queue| APIClient
         
-        VUI[🗣️ VUI Controller] -->|TTS Audio Readout| Speaker[\🔊 Device Speaker/]
+        VUI[🗣️ VUI Controller] -->|Play TTS Readout| Speaker[\🔊 Device Speaker/]
         Dash[📊 Supervisor Dashboard]
     end
 
-    %% Application Tier Subgraph
-    subgraph application_tier ["⚙️ Application Tier (Node.js Monolith)"]
-        direction TB
-        APIClient -->|1. POST /api/audio| Ingest[📥 Audio Ingestion Module]
+    %% Ingestion Pipeline (Application Entry)
+    subgraph ingestion_pipeline ["📥 Ingestion & Orchestration Layer"]
+        Ingest[Audio Ingestion Module]
+        SocketManager[🔌 Socket.io Broadcast Manager]
         
-        Ingest -->|2. Stream Audio| STTGateway[🗣️ Groq Whisper STT]
-        Ingest -->|4. Text Query| RAG[🔍 FAISS RAG Searcher]
-        Ingest -->|6. Transcript + Context| LLMExtractor[🤖 OpenAI Schema Extractor]
-        Ingest -->|8. Synthesize Speech| TTSGateway[📢 Groq Orpheus TTS]
-        
-        STTGateway -->|3. Return Transcript| Ingest
-        RAG -->|5. Return Manual Specs| Ingest
-        LLMExtractor -->|7. Return Structured JSON| Ingest
-        TTSGateway -->|9. Return Wav Buffer| Ingest
-        
-        SocketManager[🔌 Socket.io Broadcast]
+        APIClient -->|1. Multipart Form Data / JSON| Ingest
     end
+
+    %% AI Pipeline Sequential Execution
+    subgraph ai_pipeline ["🤖 Custom AI Pipeline"]
+        direction LR
+        STTGateway[🗣️ Groq Whisper STT]
+        RAG[🔍 FAISS RAG Searcher]
+        LLMExtractor[🤖 OpenAI Schema Extractor]
+        TTSGateway[📢 Groq Orpheus TTS]
+        
+        STTGateway -->|2. Transcribed Text| RAG
+        RAG -->|3. Matched Specs + Transcript| LLMExtractor
+        LLMExtractor -->|4. Structured Fields| TTSGateway
+    end
+
+    %% Core Application linking back
+    Ingest -->|Trigger Job| STTGateway
+    TTSGateway -->|5. Audio Wav Buffer + JSON Meta| Ingest
+    Ingest -->|6. JSON Response & Cached TTS URL| VUI
 
     %% External APIs Subgraph
     subgraph external_services ["☁️ External AI Cloud Services"]
-        STTGateway <-->|Whisper API| GroqSTT((Groq Cloud))
-        LLMExtractor <-->|Chat Completions| OpenRouter((OpenRouter API))
-        TTSGateway <-->|Speech Orpheus API| GroqTTS((Groq Cloud TTS))
+        GroqSTT((Groq Cloud Whisper))
+        OpenRouter((OpenRouter API))
+        GroqTTS((Groq Cloud TTS))
+        
+        STTGateway <--> GroqSTT
+        LLMExtractor <--> OpenRouter
+        TTSGateway <--> GroqTTS
     end
 
     %% Data Tier Subgraph
     subgraph data_tier ["📂 Data Tier"]
-        RAG <-->|Index / Embeddings| VectorDB[(pgvector / FAISS Index)]
-        LLMExtractor -->|Save Work Order| RelationalDB[(PostgreSQL DB)]
-        RelationalDB -.->|Real-time Updates| SocketManager
+        VectorDB[(pgvector / FAISS Index)]
+        RelationalDB[(PostgreSQL DB)]
+        
+        RAG <--> VectorDB
+        LLMExtractor -->|Save Audited Work Order| RelationalDB
+        RelationalDB -->|Change Capture / Event Trigger| SocketManager
     end
 
-    SocketManager -.->|Push WebSockets| Dash
-    Ingest -->|10. Return TTS URL & JSON| VUI
+    SocketManager -.->|Push Real-time Metrics| Dash
 
     %% Apply Classes
     class Mic,Capture,NetworkCheck,OfflineDB,APIClient,VUI,Speaker,Dash clientStyle;
